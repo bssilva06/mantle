@@ -53,20 +53,22 @@ The codebase has two natural seams: **"data in" (proxy + auth + infra)** vs **"p
 ### Day 1 — Together (pair session)
 
 - Initialize repo structure, `.gitignore`, `pyproject.toml`, `Dockerfile`, `docker-compose.yml`
-- Define shared Pydantic schemas (`ChatCompletionRequest`, `ChatCompletionResponse`, `DetectedEntity`)
+- Define shared Pydantic schemas (`ChatCompletionRequest`, `ChatCompletionResponse`, `DetectedEntity`), exception hierarchy, and config module (`pydantic-settings`) — these are the shared contracts both people depend on, so they must be agreed on together
+- Create `.env.example` with all required environment variables documented (OpenAI/Anthropic API keys, Redis URL, Postgres URL, `AWS_ENDPOINT_URL` for LocalStack, Langfuse keys, etc.)
 - Set up `develop` branch protection rules on GitHub
 - Agree on module boundaries and import contracts
 
 ### Person A (Proxy & Infra)
 
-| #   | Branch                   | Task                                                                                  |
-| --- | ------------------------ | ------------------------------------------------------------------------------------- |
-| 1   | `feat/fastapi-scaffold`  | FastAPI app with uvloop, `/health` + `/ready` endpoints                               |
-| 2   | `feat/provider-adapters` | `ProviderAdapter` base class + OpenAI + Anthropic adapters                            |
-| 3   | `feat/database`          | PostgreSQL + Alembic migrations (tenants, api_keys, usage_logs tables + RLS policies) |
-| 4   | `feat/auth-middleware`   | API key authentication middleware with SHA-256 hashing                                |
-| 5   | `feat/docker`            | Multi-stage Dockerfile + docker-compose (FastAPI + Postgres + Redis)                  |
-| 6   | `feat/langfuse`          | Self-hosted Langfuse setup + trace integration in request lifecycle                   |
+| #   | Branch                   | Task                                                                                                          |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 1   | `feat/fastapi-scaffold`  | FastAPI app with uvloop, `/health` + `/ready` endpoints                                                       |
+| 2   | `feat/provider-adapters` | `ProviderAdapter` base class + OpenAI + Anthropic adapters                                                    |
+| 3   | `feat/database`          | PostgreSQL + Alembic migrations (tenants, api_keys, usage_logs tables + RLS policies)                         |
+| 4   | `feat/auth-middleware`   | API key authentication middleware with SHA-256 hashing                                                        |
+| 5   | `feat/docker`            | Multi-stage Dockerfile + docker-compose (FastAPI + Postgres + Redis + LocalStack for local AWS emulation)     |
+| 6   | `feat/langfuse`          | Self-hosted Langfuse setup + trace integration in request lifecycle                                           |
+| 7   | `infra/ci`               | GitHub Actions workflow: run `ruff check`, `pytest`, `mypy` on every PR to `develop`                         |
 
 ### Person B (Privacy Engine)
 
@@ -74,9 +76,10 @@ The codebase has two natural seams: **"data in" (proxy + auth + infra)** vs **"p
 | --- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
 | 1   | `feat/logging`       | structlog setup with `scrub_pii` processor, `ProcessorFormatter`, `foreign_pre_chain`, third-party suppression |
 | 2   | `feat/redis-client`  | Redis async client, connection pooling, health check                                                           |
-| 3   | `feat/chat-endpoint` | `/v1/chat/completions` non-streaming endpoint (wires Person A's adapters to request flow)                      |
-| 4   | `feat/schemas`       | Shared Pydantic models, exception hierarchy, config module (`pydantic-settings`)                               |
-| 5   | —                    | Begin research/prototyping Presidio integration locally (not merged yet)                                       |
+| 3   | `feat/chat-endpoint` | `/v1/chat/completions` non-streaming endpoint using a mock/stub adapter — swap in Person A's real adapters once `feat/provider-adapters` merges |
+| 4   | —                    | Begin research/prototyping Presidio integration locally (not merged yet)                                       |
+
+> **Note on schemas:** Shared Pydantic models, exception hierarchy, and config module are defined together on Day 1 (pair session). If schema changes are needed later, they require both people's sign-off before merging.
 
 ### Phase 1 Milestone
 
@@ -110,6 +113,10 @@ PR `develop` → `main`. **Joint demo:** authenticate a tenant, proxy a request 
 | 5   | `feat/stream-rehydrator` | `StreamingFakerRehydrator` with adaptive sliding window buffer                            |
 | 6   | `feat/deanonymization`   | Multi-strategy matching (exact → case-insensitive → fuzzy → n-gram) + rehydration metrics |
 
+### End of Phase 2 — Together (pair session)
+
+**Streaming + Rehydration Integration:** This is where Person A's SSE streaming pipeline and Person B's `StreamingFakerRehydrator` must be wired together. This is the riskiest integration point in the project — schedule a dedicated pair session to connect the streaming endpoint to the detection → surrogate → vault → rehydrate pipeline end-to-end. Do not leave this implicit.
+
 ### Phase 2 Milestone
 
 PR `develop` → `main`. **Joint demo:** send a prompt with PII, see Faker surrogates in Langfuse trace, stream back a rehydrated response with >85% surrogate match rate.
@@ -127,10 +134,11 @@ PR `develop` → `main`. **Joint demo:** send a prompt with PII, see Faker surro
 | 1   | `feat/rate-limiting`       | Token bucket rate limiter (free/pro/enterprise tiers) via Redis                       |
 | 2   | `feat/circuit-breaker`     | Circuit breaker for upstream providers (5 failures → open → 30s cooldown)             |
 | 3   | `feat/prometheus`          | Prometheus metrics endpoint (latency percentiles, detection rates, rehydration stats) |
-| 4   | `feat/ecs-deploy`          | AWS ECS Fargate deployment config, auto-scaling, CloudWatch alarms                    |
-| 5   | `feat/docker-compose-prod` | Production-ready Docker Compose for self-hosted users                                 |
-| 6   | `docs/readme`              | README with quick-start guide (<5 min to first masked request), cURL examples         |
-| 7   | `feat/garak-full`          | Comprehensive garak security suite run                                                |
+| 4   | `feat/docker-compose-prod` | Production-ready Docker Compose for self-hosted users (primary deployment target for MVP) |
+| 5   | `docs/readme`              | README with quick-start guide (<5 min to first masked request), cURL examples         |
+| 6   | `feat/garak-full`          | Comprehensive garak security suite run                                                |
+
+> **ECS Fargate deferred to post-MVP.** Docker Compose is sufficient for beta users and self-hosted deployments. ECS adds IAM roles, task definitions, VPC config, and load balancers — complexity that can eat days without delivering user value at this stage. Revisit after validation with real users.
 
 ### Person B (Rust Core)
 
@@ -146,32 +154,15 @@ PR `develop` → `main`. **Joint demo:** send a prompt with PII, see Faker surro
 
 ### Phase 3 Milestone
 
-PR `develop` → `main`, tag `v0.1.0`. Full production deployment. <50ms p99 detection, 500+ RPS, README published, Show HN ready.
+PR `develop` → `main`, tag `v0.1.0`. Docker Compose deployment ready. <50ms p99 detection, 500+ RPS, README published, Show HN ready.
 
 ---
 
 ## Key Considerations
 
-1. **Conflict hotspot: shared Pydantic schemas** — Both people will touch shared types. Define all Pydantic models together on Day 1 and treat schema changes as requiring both people's sign-off.
-2. **Rust experience:** If neither founder knows Rust, consider doing Phase 2 with a pure-Python Tier 1 detector (regex) first, then layer in Rust in Phase 3 — the PRD supports this since it's a performance optimization, not a functional requirement.
-3. **Daily syncs:** 15-min standup to flag blockers and coordinate merges. End-of-week joint demo on Friday to catch integration issues early before they compound.
+1. **Tests ship with features, not as separate branches.** Every feature branch must include its own unit tests. Person A's `feat/integration-tests` in Phase 2 covers only cross-module end-to-end flows — it is not a substitute for unit tests on individual features. CI (GitHub Actions) enforces this by running `pytest` on every PR.
+2. **Conflict hotspot: shared Pydantic schemas** — Both people will touch shared types. Define all Pydantic models together on Day 1 and treat schema changes as requiring both people's sign-off.
+3. **Rust experience:** If neither founder knows Rust, consider doing Phase 2 with a pure-Python Tier 1 detector (regex) first, then layer in Rust in Phase 3 — the PRD supports this since it's a performance optimization, not a functional requirement.
+4. **Daily syncs:** 15-min standup to flag blockers and coordinate merges. End-of-week joint demo on Friday to catch integration issues early before they compound.
+5. **LocalStack for development:** All AWS service clients must use the configurable `AWS_ENDPOINT_URL` pattern from the PRD so the same code works against LocalStack (dev) and real AWS (production). Docker Compose includes LocalStack on port 4566.
 
----
-
-## Earlier Chat Context
-
-### Project Ideas Discussion
-
-Before settling on the AI Privacy Gateway, we discussed unique developer tool project ideas. Top picks for impact:
-
-| Project                         | Why It Stands Out                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| **Error Message Search Engine** | Every developer hits this pain daily; cutting debugging time by even 20% is massive   |
-| **Config File Translator**      | Migration fatigue is real; solves a concrete, recurring problem with a clear audience |
-| **API Contract Drift Detector** | Catches bugs before users do; valuable for any team with APIs, few good tools exist   |
-
-### Copilot vs Cursor
-
-- **GitHub Copilot** is built natively into VS Code by GitHub/Microsoft. Full extension marketplace compatibility, always current with VS Code updates, free tier + $10/mo Pro.
-- **Cursor** is a fork of VS Code — a separate app. Similar AI agent capabilities, $20/mo Pro, can lag behind VS Code updates.
-- Functionally converging — neither has a decisive edge. Main difference is Copilot lives inside official VS Code, Cursor requires switching editors.

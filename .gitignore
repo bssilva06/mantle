@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Rust
+rust/target/
+*.so
+*.dylib
+*.dll
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Docker
+docker-compose.override.yml
+
+# Alembic
+alembic/versions/*.py
+!alembic/versions/.gitkeep
+
+# spaCy models
+en_core_web_md/
+en_core_web_lg/
+
+# Misc
+*.log
+*.pid

@@ -1,0 +1,16 @@
+[package]
+name = "mantle-rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mantle_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.27", features = ["extension-module"] }
+aho-corasick = "1.1"
+regex = "1.10"
+bstr = "1.9"
+rayon = "1.10"
+zeroize = "1.7"

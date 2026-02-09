@@ -1,0 +1,1 @@
+"""ProviderAdapter abstract base class."""

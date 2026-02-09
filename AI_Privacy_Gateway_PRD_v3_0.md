@@ -480,6 +480,17 @@ The system MUST expose Prometheus-compatible metrics:
 | **Prompt Testing** | promptfoo | Latest | Local evaluation framework |
 | **Container** | Docker | Latest | Reproducible builds |
 | **Orchestration** | AWS ECS Fargate | - | Managed serverless containers |
+| **Local AWS Emulation** | LocalStack | ≥4.13.0 | Free local AWS emulation for development (S3, KMS, etc.) |
+
+**Development vs Production AWS Configuration:**  
+All AWS service clients (S3, KMS, SQS, etc.) MUST use a configurable endpoint URL so the same codebase works against both LocalStack (development) and real AWS (production). Configuration via environment variable:
+
+```python
+# AWS_ENDPOINT_URL=http://localhost:4566  → LocalStack (dev)
+# AWS_ENDPOINT_URL=None/unset             → Real AWS (production)
+endpoint_url = os.getenv("AWS_ENDPOINT_URL", None)
+s3 = boto3.client("s3", endpoint_url=endpoint_url)
+```
 
 ### 6.2 Rust Crates (via PyO3)
 

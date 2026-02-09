@@ -1,0 +1,1 @@
+"""DetectedEntity and DetectionResult schemas."""
